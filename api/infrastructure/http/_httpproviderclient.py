@@ -90,7 +90,9 @@ class HttpProviderClient(ProviderClient):
                     message = response.text
                 return StatusCodeModelError(status_code=response.status_code, detail=message)
 
-        if response.headers.get("Content-Type") == "application/json":
+        # The header may carry parameters or another casing ("Application/JSON", "application/json; charset=utf-8").
+        media_type = response.headers.get("Content-Type", "").partition(";")[0].strip().lower()
+        if media_type == "application/json":
             data, text = response.json(), None
         else:
             data, text = None, response.text

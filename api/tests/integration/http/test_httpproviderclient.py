@@ -94,6 +94,50 @@ class TestHttpProviderClient:
         assert route.called is True
         assert route.calls[0].request.headers.get("Authorization") is None
 
+    @pytest.mark.parametrize(
+        "content_type",
+        [
+            "application/json",
+            "application/json; charset=utf-8",
+            "application/json;charset=UTF-8",
+            "Application/JSON",
+            " application/json ; charset=utf-8",
+        ],
+    )
+    @respx.mock
+    async def test_forward_reads_json_response_whatever_the_content_type_parameters_or_case(self, content_type):
+        provider = provider_factory()
+        request = ProviderRequest(id="req-1", endpoint=ProviderEndpoint.MODELS)
+
+        body = VllmModelsResponseFactory(model_id=DEFAULT_MODEL_ID)
+        respx.get(url=urljoin(DEFAULT_PROVIDER_URL, "/v1/models")).mock(
+            return_value=httpx.Response(status_code=200, content=httpx.Response(200, json=body).content, headers={"Content-Type": content_type})
+        )
+
+        result = await http_provider_client().forward(provider=provider, request=request)
+
+        assert isinstance(result, ProviderResponse)
+        assert [model.id for model in result.data.data] == [DEFAULT_MODEL_ID]
+        assert result.text is None
+
+    @pytest.mark.parametrize("content_type", ["text/plain; version=0.0.4; charset=utf-8", "text/plain", None])
+    @respx.mock
+    async def test_forward_reads_non_json_response_as_text(self, content_type):
+        provider = provider_factory()
+        request = ProviderRequest(id="req-1", endpoint=ProviderEndpoint.METRICS)
+
+        body = VllmMetricsResponseFactory(model_name=DEFAULT_MODEL_ID, running=2.0, waiting=1.0)
+        headers = {"Content-Type": content_type} if content_type else {}
+        route = respx.get(url=urljoin(DEFAULT_PROVIDER_URL, "/metrics")).mock(
+            return_value=httpx.Response(status_code=200, content=body["text"].encode(), headers=headers)
+        )
+
+        result = await http_provider_client().forward(provider=provider, request=request)
+
+        assert isinstance(result, ProviderResponse)
+        assert result.data.running_requests == 2.0
+        assert route.calls[0].response.headers.get("Content-Type") == content_type
+
     @respx.mock
     async def test_forward_metrics_text_response(self):
         provider = provider_factory()
