@@ -19,6 +19,7 @@ class RoutersState(EntityState):
             [
                 "image-to-text",
                 "automatic-speech-recognition",
+                "decision",
                 "text-embeddings-inference",
                 "text-generation",
                 "text-classification",

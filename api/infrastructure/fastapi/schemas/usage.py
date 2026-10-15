@@ -14,6 +14,7 @@ class EndpointUsage(StrEnum):
     EMBEDDINGS = f"/v1{EndpointRoute.EMBEDDINGS}"
     OCR = f"/v1{EndpointRoute.OCR}"
     RERANK = f"/v1{EndpointRoute.RERANK}"
+    SYSTEMONE = f"/v1{EndpointRoute.SYSTEMONE}"
     SEARCH = "/v1/search"
 
 

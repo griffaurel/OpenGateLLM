@@ -47,6 +47,10 @@ RERANK_ENDPOINT_BY_PROVIDER = {
     ProviderType.VLLM: "/v2/rerank",
 }
 
+SYSTEMONE_ENDPOINT_BY_PROVIDER = {
+    ProviderType.OPENAI: "/v1/systemone",
+}
+
 
 def mock_models_responses(respx_mock, provider_type: ProviderType, body: factory.DictFactory, status_code: int) -> None:
     url = urljoin(DEFAULT_PROVIDER_URL, MODELS_ENDPOINT_BY_PROVIDER[provider_type])
@@ -71,6 +75,11 @@ def mock_embeddings_responses(respx_mock, provider_type: ProviderType, body: fac
 
 def mock_rerank_responses(respx_mock, provider_type: ProviderType, body: list | factory.Factory, status_code: int):
     url = urljoin(DEFAULT_PROVIDER_URL, RERANK_ENDPOINT_BY_PROVIDER[provider_type])
+    return respx_mock.post(url=url).mock(return_value=httpx.Response(status_code=status_code, json=body))
+
+
+def mock_systemone_responses(respx_mock, provider_type: ProviderType, body: factory.DictFactory, status_code: int):
+    url = urljoin(DEFAULT_PROVIDER_URL, SYSTEMONE_ENDPOINT_BY_PROVIDER[provider_type])
     return respx_mock.post(url=url).mock(return_value=httpx.Response(status_code=status_code, json=body))
 
 

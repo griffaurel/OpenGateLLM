@@ -42,6 +42,7 @@ class UsageState(EntityState):
             "/v1/ocr",
             "/v1/rerank",
             "/v1/search",
+            "/v1/systemone",
         ]
 
     def _format_bucket(self, bucket: dict) -> Usage:

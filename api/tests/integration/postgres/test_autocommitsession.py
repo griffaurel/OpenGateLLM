@@ -27,6 +27,7 @@ from api.tests.integration.conftest import TEST_POSTGRES_URL, bind_sql_factories
 from api.tests.integration.endpoints.utils import DEFAULT_PROVIDER_URL
 from api.tests.integration.factories import sql as sql_factories
 from api.tests.integration.factories.mistral import MistralOcrResponseFactory
+from api.tests.integration.factories.systemone import SYSTEMONE_QUESTIONS, SYSTEMONE_STATE, SystemOneResponseFactory
 from api.tests.integration.factories.tei import TeiEmbeddingsResponseFactory, TeiRerankResponseFactory
 from api.tests.integration.factories.vllm import VllmChatCompletionsResponseFactory
 
@@ -105,6 +106,15 @@ FORWARD_SCENARIOS = [
         provider_path="/rerank",
         build_response=lambda: httpx.Response(TeiRerankResponseFactory._status_code, json=TeiRerankResponseFactory(count=len(RERANK_DOCUMENTS))),
         request_body={"model": ROUTER_NAME, "query": "The sun is shining.", "documents": RERANK_DOCUMENTS},
+    ),
+    ForwardScenario(
+        name="systemone",
+        url=f"/v1{EndpointRoute.SYSTEMONE}",
+        router_type=RouterType.DECISION,
+        provider_type=ProviderType.OPENAI,
+        provider_path="/v1/systemone",
+        build_response=lambda: httpx.Response(SystemOneResponseFactory._status_code, json=SystemOneResponseFactory()),
+        request_body={"model": ROUTER_NAME, "state": SYSTEMONE_STATE, "questions": SYSTEMONE_QUESTIONS},
     ),
 ]
 

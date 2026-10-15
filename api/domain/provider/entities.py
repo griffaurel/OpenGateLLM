@@ -17,6 +17,7 @@ class ProviderEndpoint(StrEnum):
     MODELS = "/models"
     OCR = "/ocr"
     RERANK = "/rerank"
+    SYSTEMONE = "/systemone"
 
 
 # Add world as a country code, default value of the carbon footprint computation framework
@@ -69,6 +70,9 @@ COMPATIBLE_PROVIDER_TYPES: dict[RouterType, list[str]] = {
         ProviderType.ALBERT.value,
         ProviderType.TEI.value,
         ProviderType.VLLM.value,
+    ],
+    RouterType.DECISION: [  # systemone
+        ProviderType.OPENAI.value,  # any server that answers POST /v1/systemone (Colibrì, Jev...)
     ],
     RouterType.IMAGE_TO_TEXT: [  # ocr
         ProviderType.MISTRAL.value,

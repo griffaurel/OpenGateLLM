@@ -19,6 +19,7 @@ from api.infrastructure.http.adapters.ocr import OcrAdapter
 from api.infrastructure.http.adapters.rerank import RerankAdapter
 from api.infrastructure.http.adapters.rerank.tei import TeiRerankAdapter
 from api.infrastructure.http.adapters.rerank.vllm import VllmRerankAdapter
+from api.infrastructure.http.adapters.systemone.openai import OpenaiSystemOneAdapter
 from api.tests.unit.use_case.factories import ProviderFactory
 
 
@@ -353,6 +354,16 @@ class TestHttpProviderAdapterBuilder:
         # Assert
         assert isinstance(result, EmbeddingsAdapter)
 
+    def test_should_return_openai_systemone_adapter_for_openai_provider(self, http_provider_adapter_builder: HttpProviderAdapterBuilder):
+        # Arrange
+        provider = ProviderFactory(type=ProviderType.OPENAI, url="https://colibri.test")
+
+        # Act
+        result = http_provider_adapter_builder.build(endpoint=ProviderEndpoint.SYSTEMONE, provider=provider)
+
+        # Assert
+        assert isinstance(result, OpenaiSystemOneAdapter)
+
     @pytest.mark.parametrize(
         "provider_type,endpoint",
         [
@@ -366,6 +377,10 @@ class TestHttpProviderAdapterBuilder:
             (ProviderType.TEI, ProviderEndpoint.METRICS),
             (ProviderType.TEI, ProviderEndpoint.OCR),
             (ProviderType.VLLM, ProviderEndpoint.OCR),
+            (ProviderType.ALBERT, ProviderEndpoint.SYSTEMONE),
+            (ProviderType.MISTRAL, ProviderEndpoint.SYSTEMONE),
+            (ProviderType.TEI, ProviderEndpoint.SYSTEMONE),
+            (ProviderType.VLLM, ProviderEndpoint.SYSTEMONE),
         ],
     )
     def test_should_return_unsupported_provider_endpoint_error_when_adapter_is_not_found(

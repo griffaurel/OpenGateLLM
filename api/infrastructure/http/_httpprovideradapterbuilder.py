@@ -26,6 +26,7 @@ from api.infrastructure.http.adapters.ocr.mistral import MistralOcrAdapter
 from api.infrastructure.http.adapters.rerank.albert import AlbertRerankAdapter
 from api.infrastructure.http.adapters.rerank.tei import TeiRerankAdapter
 from api.infrastructure.http.adapters.rerank.vllm import VllmRerankAdapter
+from api.infrastructure.http.adapters.systemone.openai import OpenaiSystemOneAdapter
 
 
 class HttpProviderAdapterBuilder:
@@ -68,6 +69,9 @@ class HttpProviderAdapterBuilder:
             ProviderType.ALBERT: AlbertRerankAdapter,
             ProviderType.TEI: TeiRerankAdapter,
             ProviderType.VLLM: VllmRerankAdapter,
+        },
+        ProviderEndpoint.SYSTEMONE: {
+            ProviderType.OPENAI: OpenaiSystemOneAdapter,
         },
     }
 
