@@ -8,7 +8,7 @@ from api.domain.provider.errors import ProviderAdapterValidationResponseError
 from api.domain.systemone.entities import CreateSystemOneBody, SystemOne
 from api.infrastructure.http import HttpProviderRequest, HttpProviderResponse
 from api.infrastructure.http.adapters.systemone import SystemOneAdapter
-from api.infrastructure.http.adapters.systemone.openai import OpenaiSystemOneAdapter
+from api.infrastructure.http.adapters.systemone.colibri import ColibriSystemOneAdapter
 from api.tests.integration.factories.systemone import SYSTEMONE_QUESTIONS, SYSTEMONE_STATE, SystemOneResponseFactory
 from api.tests.unit.use_case.factories import ProviderFactory
 
@@ -17,12 +17,12 @@ ROUTER_NAME = "decision-router"
 
 @pytest.fixture
 def provider():
-    return ProviderFactory(type=ProviderType.OPENAI, url="https://colibri.test", model_name="qwen36", model_total_params=10, model_active_params=5)
+    return ProviderFactory(type=ProviderType.COLIBRI, url="https://colibri.test", model_name="qwen36", model_total_params=10, model_active_params=5)
 
 
 @pytest.fixture
-def adapter(provider) -> OpenaiSystemOneAdapter:
-    return OpenaiSystemOneAdapter(provider=provider)
+def adapter(provider) -> ColibriSystemOneAdapter:
+    return ColibriSystemOneAdapter(provider=provider)
 
 
 def _request(**extra) -> ProviderRequest:
@@ -39,7 +39,7 @@ class TestSystemOneAdapter:
 
     @pytest.mark.parametrize("base_url", ["https://colibri.test", "https://colibri.test/", "https://gateway.test/colibri"])
     def test_should_build_the_url_from_the_provider_url(self, provider, base_url):
-        adapter = OpenaiSystemOneAdapter(provider=provider.model_copy(update={"url": base_url}))
+        adapter = ColibriSystemOneAdapter(provider=provider.model_copy(update={"url": base_url}))
 
         result = adapter.to_http_request(_request())
 
@@ -82,4 +82,4 @@ class TestSystemOneAdapter:
         result = adapter.to_provider_response(http_response=http_response, request=_request())
 
         assert isinstance(result, ProviderAdapterValidationResponseError)
-        assert result.provider_type == ProviderType.OPENAI
+        assert result.provider_type == ProviderType.COLIBRI

@@ -17,9 +17,11 @@ from api.domain.provider.errors import (
 from api.domain.router.entities import RouterType
 from api.domain.router.errors import RouterNotFoundError
 from api.infrastructure.fastapi.routes import EndpointRoute
+from api.infrastructure.postgres.models import Provider as ProviderModel
 from api.tests.helpers import INVALID_API_KEY, create_key
 from api.tests.integration.endpoints.utils import DEFAULT_PROVIDER_URL, mock_models_responses
 from api.tests.integration.factories.albert import AlbertModelResponseFactory, AlbertModelsResponseFactory
+from api.tests.integration.factories.colibri import ColibriModelsResponseFactory
 from api.tests.integration.factories.sql import RouterSQLFactory, UserSQLFactory
 
 URL = f"/v1{EndpointRoute.ADMIN_PROVIDERS}"
@@ -72,6 +74,89 @@ class TestCreateProvider:
         assert isinstance(response.json()["id"], int)
         assert isinstance(response.json()["created"], int)
         assert isinstance(response.json()["updated"], int)
+
+    @respx.mock
+    async def test_registers_a_colibri_provider_on_a_decision_router(self, client: AsyncClient, db_session):
+        router = RouterSQLFactory(user=self.admin_user, type=RouterType.DECISION)
+        await db_session.flush()
+        route = mock_models_responses(
+            respx_mock=respx,
+            provider_type=ProviderType.COLIBRI,
+            body=ColibriModelsResponseFactory(model=DEFAULT_MODEL_ID),
+            status_code=ColibriModelsResponseFactory._status_code,
+        )
+
+        response = await client.post(
+            url=URL,
+            headers={"Authorization": f"Bearer {self.key.token}"},
+            json=_valid_body(router.id, type=ProviderType.COLIBRI.value, key="colibri-key"),
+        )
+
+        assert response.status_code == 201, response.text
+        provider = response.json()
+        assert provider["type"] == "colibri"
+        assert provider["model_name"] == DEFAULT_MODEL_ID
+        stored = await db_session.get(ProviderModel, provider["id"])
+        assert stored.type == ProviderType.COLIBRI
+        assert stored.max_context_length is None  # Colibrì does not announce one
+        assert stored.vector_size is None
+        assert route.calls[0].request.headers["Authorization"] == "Bearer colibri-key"
+
+    @respx.mock
+    async def test_refuses_a_colibri_provider_when_the_server_does_not_serve_the_model(self, client: AsyncClient, db_session):
+        router = RouterSQLFactory(user=self.admin_user, type=RouterType.DECISION)
+        await db_session.flush()
+        mock_models_responses(
+            respx_mock=respx,
+            provider_type=ProviderType.COLIBRI,
+            body=ColibriModelsResponseFactory(model="another-model"),
+            status_code=ColibriModelsResponseFactory._status_code,
+        )
+
+        response = await client.post(
+            url=URL,
+            headers={"Authorization": f"Bearer {self.key.token}"},
+            json=_valid_body(router.id, type=ProviderType.COLIBRI.value),
+        )
+
+        assert response.status_code == 404, response.text
+        assert response.json()["detail"] == f"Model {DEFAULT_MODEL_ID} not found."
+
+    @respx.mock
+    async def test_refuses_a_colibri_provider_when_the_server_is_not_reachable(self, client: AsyncClient, db_session):
+        router = RouterSQLFactory(user=self.admin_user, type=RouterType.DECISION)
+        await db_session.flush()
+        mock_models_responses(respx_mock=respx, provider_type=ProviderType.COLIBRI, body={"error": "unavailable"}, status_code=503)
+
+        response = await client.post(
+            url=URL,
+            headers={"Authorization": f"Bearer {self.key.token}"},
+            json=_valid_body(router.id, type=ProviderType.COLIBRI.value),
+        )
+
+        assert response.status_code == 424, response.text
+
+    @pytest.mark.parametrize(
+        ("router_type", "provider_type"),
+        [
+            (RouterType.TEXT_GENERATION, ProviderType.COLIBRI),
+            (RouterType.TEXT_EMBEDDINGS_INFERENCE, ProviderType.COLIBRI),
+            (RouterType.DECISION, ProviderType.OPENAI),
+            (RouterType.DECISION, ProviderType.VLLM),
+        ],
+    )
+    async def test_refuses_a_provider_type_that_does_not_fit_the_router_type(self, client: AsyncClient, db_session, router_type, provider_type):
+        router = RouterSQLFactory(user=self.admin_user, type=router_type)
+        await db_session.flush()
+
+        response = await client.post(
+            url=URL,
+            headers={"Authorization": f"Bearer {self.key.token}"},
+            json=_valid_body(router.id, type=provider_type.value),
+        )
+
+        assert response.status_code == 400, response.text
+        assert response.json()["detail"] == f"Invalid model provider type {provider_type.value} for {router_type.value} router."
 
     @pytest.mark.parametrize(
         "use_case_result,expected_status,expected_detail",

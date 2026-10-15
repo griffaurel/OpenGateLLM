@@ -12,6 +12,7 @@ from api.infrastructure.http.adapters.metrics import MetricsAdapter
 from api.infrastructure.http.adapters.metrics.mistral import MistralMetricsAdapter
 from api.infrastructure.http.adapters.metrics.vllm import VllmMetricsAdapter
 from api.infrastructure.http.adapters.models import ModelsAdapter
+from api.infrastructure.http.adapters.models.colibri import ColibriModelsAdapter
 from api.infrastructure.http.adapters.models.mistral import MistralModelsAdapter
 from api.infrastructure.http.adapters.models.tei import TeiModelsAdapter
 from api.infrastructure.http.adapters.models.vllm import VllmModelsAdapter
@@ -19,7 +20,7 @@ from api.infrastructure.http.adapters.ocr import OcrAdapter
 from api.infrastructure.http.adapters.rerank import RerankAdapter
 from api.infrastructure.http.adapters.rerank.tei import TeiRerankAdapter
 from api.infrastructure.http.adapters.rerank.vllm import VllmRerankAdapter
-from api.infrastructure.http.adapters.systemone.openai import OpenaiSystemOneAdapter
+from api.infrastructure.http.adapters.systemone.colibri import ColibriSystemOneAdapter
 from api.tests.unit.use_case.factories import ProviderFactory
 
 
@@ -354,15 +355,25 @@ class TestHttpProviderAdapterBuilder:
         # Assert
         assert isinstance(result, EmbeddingsAdapter)
 
-    def test_should_return_openai_systemone_adapter_for_openai_provider(self, http_provider_adapter_builder: HttpProviderAdapterBuilder):
+    def test_should_return_colibri_systemone_adapter_for_colibri_provider(self, http_provider_adapter_builder: HttpProviderAdapterBuilder):
         # Arrange
-        provider = ProviderFactory(type=ProviderType.OPENAI, url="https://colibri.test")
+        provider = ProviderFactory(type=ProviderType.COLIBRI, url="https://colibri.test")
 
         # Act
         result = http_provider_adapter_builder.build(endpoint=ProviderEndpoint.SYSTEMONE, provider=provider)
 
         # Assert
-        assert isinstance(result, OpenaiSystemOneAdapter)
+        assert isinstance(result, ColibriSystemOneAdapter)
+
+    def test_should_return_colibri_models_adapter_for_colibri_provider(self, http_provider_adapter_builder: HttpProviderAdapterBuilder):
+        # Arrange
+        provider = ProviderFactory(type=ProviderType.COLIBRI, url="https://colibri.test")
+
+        # Act
+        result = http_provider_adapter_builder.build(endpoint=ProviderEndpoint.MODELS, provider=provider)
+
+        # Assert
+        assert isinstance(result, ColibriModelsAdapter)
 
     @pytest.mark.parametrize(
         "provider_type,endpoint",
@@ -377,10 +388,15 @@ class TestHttpProviderAdapterBuilder:
             (ProviderType.TEI, ProviderEndpoint.METRICS),
             (ProviderType.TEI, ProviderEndpoint.OCR),
             (ProviderType.VLLM, ProviderEndpoint.OCR),
+            (ProviderType.OPENAI, ProviderEndpoint.SYSTEMONE),
             (ProviderType.ALBERT, ProviderEndpoint.SYSTEMONE),
             (ProviderType.MISTRAL, ProviderEndpoint.SYSTEMONE),
             (ProviderType.TEI, ProviderEndpoint.SYSTEMONE),
             (ProviderType.VLLM, ProviderEndpoint.SYSTEMONE),
+            (ProviderType.COLIBRI, ProviderEndpoint.CHAT_COMPLETIONS),
+            (ProviderType.COLIBRI, ProviderEndpoint.EMBEDDINGS),
+            (ProviderType.COLIBRI, ProviderEndpoint.METRICS),
+            (ProviderType.COLIBRI, ProviderEndpoint.RERANK),
         ],
     )
     def test_should_return_unsupported_provider_endpoint_error_when_adapter_is_not_found(

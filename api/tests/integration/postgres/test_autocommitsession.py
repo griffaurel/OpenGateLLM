@@ -111,7 +111,7 @@ FORWARD_SCENARIOS = [
         name="systemone",
         url=f"/v1{EndpointRoute.SYSTEMONE}",
         router_type=RouterType.DECISION,
-        provider_type=ProviderType.OPENAI,
+        provider_type=ProviderType.COLIBRI,
         provider_path="/v1/systemone",
         build_response=lambda: httpx.Response(SystemOneResponseFactory._status_code, json=SystemOneResponseFactory()),
         request_body={"model": ROUTER_NAME, "state": SYSTEMONE_STATE, "questions": SYSTEMONE_QUESTIONS},

@@ -16,7 +16,7 @@ class ProvidersState(EntityState):
     @rx.var
     def provider_types_list(self) -> list[str]:
         """Get list of provider types."""
-        return sorted(["Albert", "Mistral", "OpenAI", "TEI", "vLLM"])
+        return sorted(["Albert", "Colibri", "Mistral", "OpenAI", "TEI", "vLLM"])
 
     @rx.var
     def model_hosting_zones_list(self) -> list[str]:
@@ -45,6 +45,7 @@ class ProvidersState(EntityState):
 
         _type_converter = {
             "albert": "Albert",
+            "colibri": "Colibri",
             "mistral": "Mistral",
             "openai": "OpenAI",
             "tei": "TEI",
