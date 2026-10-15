@@ -22,7 +22,8 @@ from api.domain.user.errors import UserHasNoAccessToRouterError
 from api.infrastructure.fastapi.routes import EndpointRoute
 from api.tests.helpers import INVALID_API_KEY, create_key
 from api.tests.integration.conftest import override_global_context
-from api.tests.integration.endpoints.utils import DEFAULT_PROVIDER_URL, mock_systemone_responses
+from api.tests.integration.endpoints.utils import DEFAULT_PROVIDER_URL, mock_models_responses, mock_systemone_responses
+from api.tests.integration.factories.colibri import ColibriModelsResponseFactory
 from api.tests.integration.factories.sql import RouterSQLFactory, UserSQLFactory
 from api.tests.integration.factories.systemone import SYSTEMONE_QUESTIONS, SYSTEMONE_STATE, SystemOneResponseFactory
 
@@ -58,7 +59,7 @@ class TestCreateSystemOne:
             name=DEFAULT_MODEL_NAME,
             type=RouterType.DECISION,
             providers=1,
-            providers__type=ProviderType.OPENAI,
+            providers__type=ProviderType.COLIBRI,
             providers__url=DEFAULT_PROVIDER_URL,
         )
 
@@ -70,7 +71,7 @@ class TestCreateSystemOne:
 
         mock_systemone_responses(
             respx_mock=respx,
-            provider_type=ProviderType.OPENAI,
+            provider_type=ProviderType.COLIBRI,
             body=SystemOneResponseFactory(),
             status_code=SystemOneResponseFactory._status_code,
         )
@@ -92,7 +93,7 @@ class TestCreateSystemOne:
         admin_key = await create_key(db_session, name="admin_systemone_usage_key", user=self.router_owner)
         self._router()
         await db_session.flush()
-        mock_systemone_responses(respx_mock=respx, provider_type=ProviderType.OPENAI, body=SystemOneResponseFactory(), status_code=200)
+        mock_systemone_responses(respx_mock=respx, provider_type=ProviderType.COLIBRI, body=SystemOneResponseFactory(), status_code=200)
 
         response = await client.post(url=URL, headers={"Authorization": f"Bearer {admin_key.token}"}, json=_valid_body())
 
@@ -107,7 +108,7 @@ class TestCreateSystemOne:
         admin_key = await create_key(db_session, name="admin_systemone_relay_key", user=self.router_owner)
         self._router()
         await db_session.flush()
-        route = mock_systemone_responses(respx_mock=respx, provider_type=ProviderType.OPENAI, body=SystemOneResponseFactory(), status_code=200)
+        route = mock_systemone_responses(respx_mock=respx, provider_type=ProviderType.COLIBRI, body=SystemOneResponseFactory(), status_code=200)
 
         response = await client.post(
             url=URL,
@@ -122,6 +123,32 @@ class TestCreateSystemOne:
         assert provider_json["questions"] == SYSTEMONE_QUESTIONS
         assert provider_json["normalize"] == "mean"
         assert None not in provider_json.values()
+
+    @respx.mock
+    async def test_serves_decisions_through_a_provider_registered_with_the_admin_api(self, client: AsyncClient, db_session):
+        admin_key = await create_key(db_session, name="admin_systemone_flow_key", user=self.router_owner)
+        router = RouterSQLFactory(user=self.router_owner, name=DEFAULT_MODEL_NAME, type=RouterType.DECISION, providers=0)
+        await db_session.flush()
+        headers = {"Authorization": f"Bearer {admin_key.token}"}
+        mock_models_responses(
+            respx_mock=respx,
+            provider_type=ProviderType.COLIBRI,
+            body=ColibriModelsResponseFactory(model=PROVIDER_MODEL_NAME),
+            status_code=200,
+        )
+        route = mock_systemone_responses(respx_mock=respx, provider_type=ProviderType.COLIBRI, body=SystemOneResponseFactory(), status_code=200)
+
+        registration = await client.post(
+            url=f"/v1{EndpointRoute.ADMIN_PROVIDERS}",
+            headers=headers,
+            json={"router_id": router.id, "type": "colibri", "url": DEFAULT_PROVIDER_URL, "model_name": PROVIDER_MODEL_NAME},
+        )
+        decision = await client.post(url=URL, headers=headers, json=_valid_body())
+
+        assert registration.status_code == 201, registration.text
+        assert decision.status_code == 200, decision.text
+        assert decision.json()["answers"]["department"]["choice"] == "technical"
+        assert json.loads(route.calls[0].request.content)["model"] == PROVIDER_MODEL_NAME
 
     @pytest.mark.parametrize(
         "use_case_result,expected_status,expected_detail",
@@ -140,9 +167,9 @@ class TestCreateSystemOne:
             (StatusCodeModelError(status_code=400, detail="bad request"), 400, "bad request"),
             (UnknownModelError(status_code=500, detail="upstream failure"), 500, "upstream failure"),
             (
-                UnsupportedProviderEndpointError(endpoint=ProviderEndpoint.SYSTEMONE, provider_type=ProviderType.OPENAI),
+                UnsupportedProviderEndpointError(endpoint=ProviderEndpoint.SYSTEMONE, provider_type=ProviderType.COLIBRI),
                 500,
-                "Model provider type openai does not support the /systemone endpoint.",
+                "Model provider type colibri does not support the /systemone endpoint.",
             ),
         ],
     )
@@ -159,8 +186,8 @@ class TestCreateSystemOne:
     @pytest.mark.parametrize(
         "use_case_result",
         [
-            ProviderAdapterValidationRequestError(provider_type=ProviderType.OPENAI, errors=SAMPLE_VALIDATION_ERRORS),
-            ProviderAdapterValidationResponseError(provider_type=ProviderType.OPENAI, errors=SAMPLE_VALIDATION_ERRORS),
+            ProviderAdapterValidationRequestError(provider_type=ProviderType.COLIBRI, errors=SAMPLE_VALIDATION_ERRORS),
+            ProviderAdapterValidationResponseError(provider_type=ProviderType.COLIBRI, errors=SAMPLE_VALIDATION_ERRORS),
         ],
     )
     async def test_adapter_validation_error_returns_422_with_errors(self, client: AsyncClient, app, use_case_result):

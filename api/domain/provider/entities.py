@@ -37,6 +37,7 @@ class ProviderJsonResponse(BaseModel):
 
 class ProviderType(StrEnum):
     ALBERT = "albert"
+    COLIBRI = "colibri"
     OPENAI = "openai"
     MISTRAL = "mistral"
     TEI = "tei"
@@ -72,7 +73,7 @@ COMPATIBLE_PROVIDER_TYPES: dict[RouterType, list[str]] = {
         ProviderType.VLLM.value,
     ],
     RouterType.DECISION: [  # systemone
-        ProviderType.OPENAI.value,  # any server that answers POST /v1/systemone (Colibrì, Jev...)
+        ProviderType.COLIBRI.value,
     ],
     RouterType.IMAGE_TO_TEXT: [  # ocr
         ProviderType.MISTRAL.value,

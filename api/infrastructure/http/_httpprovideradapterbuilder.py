@@ -17,6 +17,7 @@ from api.infrastructure.http.adapters.embeddings.vllm import VllmEmbeddingsAdapt
 from api.infrastructure.http.adapters.metrics.mistral import MistralMetricsAdapter
 from api.infrastructure.http.adapters.metrics.vllm import VllmMetricsAdapter
 from api.infrastructure.http.adapters.models.albert import AlbertModelsAdapter
+from api.infrastructure.http.adapters.models.colibri import ColibriModelsAdapter
 from api.infrastructure.http.adapters.models.mistral import MistralModelsAdapter
 from api.infrastructure.http.adapters.models.openai import OpenaiModelsAdapter
 from api.infrastructure.http.adapters.models.tei import TeiModelsAdapter
@@ -26,7 +27,7 @@ from api.infrastructure.http.adapters.ocr.mistral import MistralOcrAdapter
 from api.infrastructure.http.adapters.rerank.albert import AlbertRerankAdapter
 from api.infrastructure.http.adapters.rerank.tei import TeiRerankAdapter
 from api.infrastructure.http.adapters.rerank.vllm import VllmRerankAdapter
-from api.infrastructure.http.adapters.systemone.openai import OpenaiSystemOneAdapter
+from api.infrastructure.http.adapters.systemone.colibri import ColibriSystemOneAdapter
 
 
 class HttpProviderAdapterBuilder:
@@ -52,6 +53,7 @@ class HttpProviderAdapterBuilder:
         },
         ProviderEndpoint.MODELS: {
             ProviderType.ALBERT: AlbertModelsAdapter,
+            ProviderType.COLIBRI: ColibriModelsAdapter,
             ProviderType.MISTRAL: MistralModelsAdapter,
             ProviderType.OPENAI: OpenaiModelsAdapter,
             ProviderType.TEI: TeiModelsAdapter,
@@ -71,7 +73,7 @@ class HttpProviderAdapterBuilder:
             ProviderType.VLLM: VllmRerankAdapter,
         },
         ProviderEndpoint.SYSTEMONE: {
-            ProviderType.OPENAI: OpenaiSystemOneAdapter,
+            ProviderType.COLIBRI: ColibriSystemOneAdapter,
         },
     }
 

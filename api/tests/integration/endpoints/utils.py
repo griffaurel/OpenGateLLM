@@ -28,6 +28,7 @@ CHAT_COMPLETIONS_ENDPOINT_BY_PROVIDER = {
 }
 MODELS_ENDPOINT_BY_PROVIDER = {
     ProviderType.ALBERT: "/v1/models",
+    ProviderType.COLIBRI: "/v1/models",
     ProviderType.MISTRAL: "/v1/models",
     ProviderType.OPENAI: "/v1/models",
     ProviderType.TEI: "/info",
@@ -48,13 +49,13 @@ RERANK_ENDPOINT_BY_PROVIDER = {
 }
 
 SYSTEMONE_ENDPOINT_BY_PROVIDER = {
-    ProviderType.OPENAI: "/v1/systemone",
+    ProviderType.COLIBRI: "/v1/systemone",
 }
 
 
-def mock_models_responses(respx_mock, provider_type: ProviderType, body: factory.DictFactory, status_code: int) -> None:
+def mock_models_responses(respx_mock, provider_type: ProviderType, body: factory.DictFactory, status_code: int):
     url = urljoin(DEFAULT_PROVIDER_URL, MODELS_ENDPOINT_BY_PROVIDER[provider_type])
-    respx_mock.get(url=url).mock(return_value=httpx.Response(status_code=status_code, json=body))
+    return respx_mock.get(url=url).mock(return_value=httpx.Response(status_code=status_code, json=body))
 
 
 def mock_chat_completions_responses(respx_mock, provider_type: ProviderType, body: factory.DictFactory, status_code: int):
