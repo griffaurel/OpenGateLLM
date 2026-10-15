@@ -3,12 +3,13 @@ from typing import Annotated, Any
 from pydantic import Field, StringConstraints
 
 from api.domain import BaseModel
+from api.infrastructure.fastapi.schemas import MAX_PASSWORD_LENGTH, PasswordBytesLimit
 from api.infrastructure.fastapi.schemas.admin.keys import KeyResponse
 
 
 class AuthLoginBody(BaseModel):
     email: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=254), Field(description="The user email.")]
-    password: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=72), Field(description="The user password.")]
+    password: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_PASSWORD_LENGTH), PasswordBytesLimit, Field(description="The user password.")]  # fmt: off
 
 
 class AuthLoginResponse(KeyResponse):
