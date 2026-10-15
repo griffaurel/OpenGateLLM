@@ -73,6 +73,7 @@ from api.use_cases.models import GetModelsUseCase, GetOneModelUseCase
 from api.use_cases.ocr import CreateOCRUseCase
 from api.use_cases.reranks import CreateRerankUseCase
 from api.use_cases.services import ProviderCapabilitiesProbe
+from api.use_cases.systemone import CreateSystemOneUseCase
 from api.use_cases.usage import GetUsagesUseCase
 
 
@@ -470,6 +471,30 @@ def create_rerank_use_case_factory(
     usage_repository: UsageRepository = Depends(_usage_repository),
 ) -> CreateRerankUseCase:
     return CreateRerankUseCase(
+        model_environmental_impacts_computer=model_environmental_impacts_computer,
+        model_tokenizer=model_tokenizer,
+        provider_client=provider_client,
+        provider_load_balancer=_provider_load_balancer(redis_client),
+        provider_metrics_logger=_provider_metrics_logger(redis_client),
+        provider_repository=_provider_repository(postgres_session),
+        router_rate_limiter=router_rate_limiter,
+        router_repository=_router_repository(postgres_session),
+        usage_context=_usage_context(),
+        usage_repository=usage_repository,
+    )
+
+
+# systemone use cases
+def create_systemone_use_case_factory(
+    postgres_session: AutocommitSession = Depends(get_autocommit_postgres_session),
+    redis_client: Redis = Depends(get_redis_client),
+    router_rate_limiter: RouterRateLimiter = Depends(_router_rate_limiter),
+    model_environmental_impacts_computer: ModelEnvironmentalImpactsComputer = Depends(_model_environmental_impacts_computer),
+    model_tokenizer: ModelTokenizer = Depends(_model_tokenizer),
+    provider_client: ProviderClient = Depends(_provider_client),
+    usage_repository: UsageRepository = Depends(_usage_repository),
+) -> CreateSystemOneUseCase:
+    return CreateSystemOneUseCase(
         model_environmental_impacts_computer=model_environmental_impacts_computer,
         model_tokenizer=model_tokenizer,
         provider_client=provider_client,

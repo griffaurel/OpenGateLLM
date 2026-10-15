@@ -15,6 +15,7 @@ class RouterName(StrEnum):
     OCR = ("ocr", "api.infrastructure.fastapi.endpoints.ocr")
     ORGANIZATIONS = ("organizations", "api.infrastructure.fastapi.endpoints.organizations")
     RERANK = ("rerank", "api.infrastructure.fastapi.endpoints.rerank")
+    SYSTEMONE = ("systemone", "api.infrastructure.fastapi.endpoints.systemone")
     USAGE = ("usage", "api.infrastructure.fastapi.endpoints.usage")
 
     def __new__(cls, value: str, module_path: str):
@@ -47,4 +48,5 @@ class EndpointRoute(StrEnum):
     OCR = "/ocr"
     ORGANIZATIONS_ME = "/organizations/me"
     RERANK = "/rerank"
+    SYSTEMONE = "/systemone"
     USAGE = "/usage"
