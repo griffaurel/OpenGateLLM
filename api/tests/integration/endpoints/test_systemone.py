@@ -1,4 +1,5 @@
 import json
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 from httpx import AsyncClient
@@ -149,6 +150,49 @@ class TestCreateSystemOne:
         assert decision.status_code == 200, decision.text
         assert decision.json()["answers"]["department"]["choice"] == "technical"
         assert json.loads(route.calls[0].request.content)["model"] == PROVIDER_MODEL_NAME
+
+    @respx.mock
+    async def test_the_decision_router_is_listed_with_its_type(self, client: AsyncClient, db_session):
+        admin_key = await create_key(db_session, name="admin_systemone_models_key", user=self.router_owner)
+        self._router()
+        await db_session.flush()
+
+        response = await client.get(url=f"/v1{EndpointRoute.MODELS}", headers={"Authorization": f"Bearer {admin_key.token}"})
+
+        assert response.status_code == 200, response.text
+        assert [(model["id"], model["type"]) for model in response.json()["data"]] == [(DEFAULT_MODEL_NAME, "decision")]
+
+    @respx.mock
+    async def test_the_health_of_a_colibri_provider_is_checked_with_its_models_endpoint(self, client: AsyncClient, db_session):
+        admin_key = await create_key(db_session, name="admin_systemone_health_key", user=self.router_owner)
+        self._router()
+        await db_session.flush()
+        models = mock_models_responses(
+            respx_mock=respx, provider_type=ProviderType.COLIBRI, body=ColibriModelsResponseFactory(model=PROVIDER_MODEL_NAME), status_code=200
+        )
+
+        response = await client.get(url=EndpointRoute.HEALTH_MODELS, headers={"Authorization": f"Bearer {admin_key.token}"})
+
+        assert response.status_code == 200, response.text
+        assert response.json()["data"] == [{"id": DEFAULT_MODEL_NAME, "status": "green"}]
+        assert models.called is True
+
+    @respx.mock
+    async def test_the_usage_is_recorded_under_the_systemone_endpoint(self, client: AsyncClient, db_session):
+        admin_key = await create_key(db_session, name="admin_systemone_usage_endpoint_key", user=self.router_owner)
+        headers = {"Authorization": f"Bearer {admin_key.token}"}
+        self._router()
+        await db_session.flush()
+        mock_systemone_responses(respx_mock=respx, provider_type=ProviderType.COLIBRI, body=SystemOneResponseFactory(), status_code=200)
+        assert (await client.post(url=URL, headers=headers, json=_valid_body())).status_code == 200
+        now = int(time.time())
+        window = f"start_time={now - 3600}&end_time={now + 3600}"
+
+        systemone = await client.get(url=f"/v1{EndpointRoute.USAGE}?{window}&endpoint=/v1{EndpointRoute.SYSTEMONE}", headers=headers)
+        chat = await client.get(url=f"/v1{EndpointRoute.USAGE}?{window}&endpoint=/v1{EndpointRoute.CHAT_COMPLETIONS}", headers=headers)
+
+        assert [(bucket["requests"], bucket["prompt_tokens"], bucket["completion_tokens"]) for bucket in systemone.json()["data"]] == [(1, 10, 0)]
+        assert chat.json()["data"] == []
 
     @pytest.mark.parametrize(
         "use_case_result,expected_status,expected_detail",
