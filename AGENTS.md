@@ -50,7 +50,7 @@ Reference implementations of these patterns:
 | Paginated list | `api/infrastructure/fastapi/endpoints/admin/roles.py`, `api/infrastructure/fastapi/endpoints/admin/users.py` (`EntitiesPage`, `*sResponse`) |
 | Full CRUD | `api/infrastructure/fastapi/endpoints/admin/roles.py`, `api/infrastructure/fastapi/endpoints/admin/routers.py` |
 | Read-only projection | `api/infrastructure/fastapi/endpoints/models.py` (`ModelQuery` + `ModelView`) |
-| Model-forward (autocommit) | embeddings, OCR, rerank, audio transcriptions |
+| Model-forward (autocommit) | embeddings, OCR, rerank, audio transcriptions, systemone |
 | Model-forward with streaming | `api/infrastructure/fastapi/endpoints/chat.py` + `api/use_cases/chat/` (see [Streaming](#streaming)) |
 
 Self-service `/v1/keys` reuses the admin key use cases (`CreateKeyUseCase`, `GetKeysUseCase`, `GetOneKeyUseCase`, `UpdateKeyUseCase`, `DeleteKeyUseCase`). Pass `user_id=authenticated_user.id` on the command to scope the operation to the current user. Admin get-one omits `user_id` (it defaults to `None`) so it can load any key. `PATCH /v1/keys/{id}` updates the name; `DELETE` revokes the key (it stays in the database and cannot be reactivated).
@@ -114,13 +114,13 @@ Three enums address the API surface, and they are **not the same concept**:
 
 | Enum | Location | Holds | Used by |
 |------|----------|-------|---------|
-| `RouterName` | `api/infrastructure/fastapi/routes.py` | the 14 routers + their `module_path` | `_register_routers`, `disabled_routers` / `hidden_routers`, `tags=[...]` |
-| `EndpointRoute` | `api/infrastructure/fastapi/routes.py` | the 22 mount paths | `@router.<verb>(path=...)` only |
-| `ProviderEndpoint` | `api/domain/provider/entities.py` | the 7 **capabilities** a provider request targets | `ProviderRequest.endpoint`, `UnsupportedProviderEndpointError`, `UsageRecorder.start_record`, `HttpProviderAdapter.SOURCE_ENDPOINT`, `ADAPTER_REGISTRY`, the use cases' `ENDPOINT` |
+| `RouterName` | `api/infrastructure/fastapi/routes.py` | the 15 routers + their `module_path` | `_register_routers`, `disabled_routers` / `hidden_routers`, `tags=[...]` |
+| `EndpointRoute` | `api/infrastructure/fastapi/routes.py` | the 23 mount paths | `@router.<verb>(path=...)` only |
+| `ProviderEndpoint` | `api/domain/provider/entities.py` | the 8 **capabilities** a provider request targets | `ProviderRequest.endpoint`, `UnsupportedProviderEndpointError`, `UsageRecorder.start_record`, `HttpProviderAdapter.SOURCE_ENDPOINT`, `ADAPTER_REGISTRY`, the use cases' `ENDPOINT` |
 
 A new route needs an `EndpointRoute` member. A new **model-forward** capability also needs a `ProviderEndpoint` member — they are declared separately on purpose.
 
-Their 7 common members carry the **same string** today, and that is a contract, not a coincidence: `PostgresUsageRecorder` persists `f"/v1{endpoint}"` in `usage.endpoint` (a plain `str` column) and `EndpointUsage` exposes those values through the public `GET /v1/usage` filter. Changing a `ProviderEndpoint` value means a data migration on `usage` **and** a breaking API change.
+Their 8 common members carry the **same string** today, and that is a contract, not a coincidence: `PostgresUsageRecorder` persists `f"/v1{endpoint}"` in `usage.endpoint` (a plain `str` column) and `EndpointUsage` exposes those values through the public `GET /v1/usage` filter. Changing a `ProviderEndpoint` value means a data migration on `usage` **and** a breaking API change.
 
 Do not merge them back, and do not reintroduce `f"/{RouterName.X}/..."` inside `EndpointRoute`: the first would make the domain import `api/infrastructure/fastapi/`, the second would let a router rename silently move a public API path.
 
@@ -455,7 +455,7 @@ Rules:
 - The use case appends a final usage chunk (`ChatCompletionChunk.build_usage_chunk`) **before** `data: [DONE]`, and also when the provider closes without a `[DONE]`. It calls `usage_context.record_usage`, `usage_repository.update_record` and `_charge_rate_limits` there — that is the only point where a stream's usage is known.
 - `usage_repository.end_record()` runs in the stream generator's `finally`, so a client disconnect still closes the record. `PostgresUsageRecorder` schedules the `usage` row on FastAPI `BackgroundTasks` from that call.
 - **The chain closes top-down, and the order is load-bearing.** A client that disconnects leaves every generator parked on its `yield`; `async for` does not close the iterator it consumes, so each level closes the next explicitly: `stream_response`'s `finally` closes its body iterator, `_as_stream_chunks` holds the use case's stream in `aclosing`, and the use case holds the provider's stream in `aclosing`. The use case's `finally` therefore runs inside the request task, where the `ContextVar` is still the request's, and records the tokens already delivered before `end_record`. Never let a finalizer do this work: the GC schedules it as a task, and a task copies whatever context is current at creation.
-- **A `CancelledError` escaping the cleanup is expected, not a bug.** Starlette cancels the request scope on a disconnect, so the Redis call releasing the inflight counter raises as soon as it suspends — measured: the `DECR` still reaches Redis (the command is written before the cancellation lands on the reply), the usage row is still written, and the provider connection is still closed. Do not "fix" it by detaching that call: it would touch all five forwarding use cases to chase a leak that does not exist.
+- **A `CancelledError` escaping the cleanup is expected, not a bug.** Starlette cancels the request scope on a disconnect, so the Redis call releasing the inflight counter raises as soon as it suspends — measured: the `DECR` still reaches Redis (the command is written before the cancellation lands on the reply), the usage row is still written, and the provider connection is still closed. Do not "fix" it by detaching that call: it would touch all six forwarding use cases to chase a leak that does not exist.
 - **The usage row is written whatever the cleanup does.** Draining the chain happens under a cancelled scope, so the first `await` that suspends raises. `_format_stream`'s `finally` records the delivered tokens and calls `end_record` without awaiting anything, so both complete before the `_inflight` exit reaches Redis. Keep it that way: an `await` placed before `end_record` would lose the row on every disconnect.
 - Add **two** `ForwardScenario` rows — streamed and not — to `test_autocommitsession.py`.
 
@@ -489,7 +489,7 @@ Two session factories. Choose **in the use-case factory** in `api/dependencies.p
 
 Autocommit wiring:
 
-- Model-forward use cases: `create_embeddings_use_case_factory`, `create_ocr_use_case_factory`, `create_rerank_use_case_factory`, `create_audio_transcriptions_use_case_factory`, `create_chat_completions_use_case_factory`
+- Model-forward use cases: `create_embeddings_use_case_factory`, `create_ocr_use_case_factory`, `create_rerank_use_case_factory`, `create_audio_transcriptions_use_case_factory`, `create_chat_completions_use_case_factory`, `create_systemone_use_case_factory`
 - `AccessController` lookups: `_authentication_key_repository`, `_authenticated_user_query` (they run on the same request as model-forward)
 
 ```python
