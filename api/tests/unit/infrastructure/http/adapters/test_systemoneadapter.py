@@ -76,6 +76,32 @@ class TestSystemOneAdapter:
         assert result.data.model == ROUTER_NAME
         assert result.data.answers["department"].choice == "technical"
 
+    def test_should_read_the_usage_of_the_provider_with_the_names_of_the_gateway(self, adapter):
+        http_response = HttpProviderResponse(data=SystemOneResponseFactory(usage={"input_tokens": 86, "output_tokens": 3, "cost": 0}))
+
+        result = adapter.to_provider_response(http_response=http_response, request=_request())
+
+        assert "usage" in result.data.model_fields_set
+        assert (result.data.usage.prompt_tokens, result.data.usage.completion_tokens, result.data.usage.total_tokens) == (86, 3, 89)
+        assert result.data.usage.prompt_tokens_details.cached_tokens == 0
+
+    @pytest.mark.parametrize("usage", [None, {}, {"cost": 0}, {"input_tokens": 86}, {"input_tokens": "86", "output_tokens": 0}, "86"])
+    def test_should_let_the_gateway_count_the_tokens_when_the_usage_cannot_be_read(self, adapter, usage):
+        body = SystemOneResponseFactory(usage=usage)
+
+        result = adapter.to_provider_response(http_response=HttpProviderResponse(data=body), request=_request())
+
+        assert isinstance(result, ProviderResponse)
+        assert "usage" not in result.data.model_fields_set
+
+    def test_should_let_the_gateway_count_the_tokens_when_the_provider_sends_no_usage(self, adapter):
+        body = SystemOneResponseFactory()
+        del body["usage"]
+
+        result = adapter.to_provider_response(http_response=HttpProviderResponse(data=body), request=_request())
+
+        assert "usage" not in result.data.model_fields_set
+
     def test_should_return_a_validation_error_when_the_provider_answer_is_invalid(self, adapter):
         http_response = HttpProviderResponse(data=SystemOneResponseFactory(answers={"urgency": {"type": "noul"}}))
 

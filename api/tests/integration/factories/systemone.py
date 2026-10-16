@@ -48,4 +48,5 @@ class SystemOneResponseFactory(factory.DictFactory):
             },
         }
     )
-    usage = factory.LazyFunction(lambda: {"input_tokens": 86, "output_tokens": 15, "cost": 0})
+    # a decision engine generates nothing: output_tokens was 0 in every request tried against a running Colibrì (laya-tiny)
+    usage = factory.LazyFunction(lambda: {"input_tokens": 86, "output_tokens": 0, "cost": 0})

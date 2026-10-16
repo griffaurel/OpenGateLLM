@@ -158,8 +158,9 @@ Fields that OpenGateLLM does not know are sent to the provider as they are. For 
 
 Each request is recorded in the [usage](/features/usage/inference_monitoring/) of the key like any other model request, with the endpoint `/v1/systemone`.
 
-- `prompt_tokens` counts the text of the `state` and of the questions (instructions, labels and descriptions). It is computed by OpenGateLLM's tokenizer, so it is an estimate and may differ from what the server's model reads.
-- `completion_tokens` is always `0`: a decision model scores options, it generates nothing.
+- `prompt_tokens` is the number of tokens the **server** reports having read (`input_tokens` in its answer). It is what the model really read, so a long `state` that the server cuts is counted up to the cut, and it includes the fixed text the server adds around your request. It is not the length of what you sent.
+- `completion_tokens` is the server's `output_tokens`. A decision engine generates nothing, so it is expected to be `0`.
+- If the answer of the server has no usable `input_tokens` and `output_tokens`, OpenGateLLM counts the `state` and the questions (instructions, labels and descriptions) with its own tokenizer, as an estimate, and `completion_tokens` is `0`.
 - The cost is computed from the `cost_prompt_tokens` of the router. The rate limits of the router apply as for the other endpoints.
 
 ## Errors
@@ -180,4 +181,4 @@ Each request is recorded in the [usage](/features/usage/inference_monitoring/) o
 - The request is relayed to one provider. If it fails, it is not tried on another provider of the router.
 - Streaming does not apply: the answer comes in one piece.
 - OpenGateLLM bounds the number of questions and of options, not the length of the text. A decision model reads a limited number of tokens: Colibrì's Laya engine, for example, cuts a long `state` at its `max_len` (512 tokens by default, per its documentation) and refuses with a `422` what cannot fit, such as too many options. The answer is then based on the part the model read, and OpenGateLLM does not tell you which part that was.
-- The tokens are not counted by the model: see [Usage and cost](#usage-and-cost).
+- Usage depends on the server: OpenGateLLM reads the `input_tokens` and `output_tokens` of its answer. See [Usage and cost](#usage-and-cost).

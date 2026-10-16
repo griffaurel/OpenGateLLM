@@ -92,7 +92,7 @@ class TestCreateSystemOne:
         assert data["answers"]["severity"]["legend"]["3"] == "losing money"
 
     @respx.mock
-    async def test_counts_the_input_and_no_output(self, client: AsyncClient, db_session):
+    async def test_counts_the_tokens_read_by_the_provider(self, client: AsyncClient, db_session):
         admin_key = await create_key(db_session, name="admin_systemone_usage_key", user=self.router_owner)
         self._router()
         await db_session.flush()
@@ -102,16 +102,35 @@ class TestCreateSystemOne:
 
         assert response.status_code == 200, response.text
         usage = response.json()["usage"]
-        assert usage["prompt_tokens"] == 10
+        assert usage["prompt_tokens"] == 86
         assert usage["completion_tokens"] == 0
-        assert usage["total_tokens"] == 10
+        assert usage["total_tokens"] == 86
+        assert "input_tokens" not in usage
+        assert "output_tokens" not in usage
 
     @respx.mock
-    async def test_counts_the_state_and_the_questions_as_prompt_tokens(self, client: AsyncClient, db_session):
+    @pytest.mark.parametrize("input_tokens", [35, 320])
+    async def test_follows_the_provider_whatever_the_text_sent(self, client: AsyncClient, db_session, input_tokens):
+        # the server counts what its model read (a long state is cut): the recorded count is the server's, not the tokenizer's (10 here)
+        admin_key = await create_key(db_session, name=f"admin_systemone_read_key_{input_tokens}", user=self.router_owner)
+        self._router()
+        await db_session.flush()
+        body = SystemOneResponseFactory(usage={"input_tokens": input_tokens, "output_tokens": 0, "cost": 0})
+        mock_systemone_responses(respx_mock=respx, provider_type=ProviderType.COLIBRI, body=body, status_code=200)
+
+        response = await client.post(url=URL, headers={"Authorization": f"Bearer {admin_key.token}"}, json=_valid_body(state="word " * 2000))
+
+        assert response.status_code == 200, response.text
+        assert response.json()["usage"]["prompt_tokens"] == input_tokens
+
+    @respx.mock
+    async def test_counts_the_state_and_the_questions_when_the_provider_sends_no_usage(self, client: AsyncClient, db_session):
         admin_key = await create_key(db_session, name="admin_systemone_count_key", user=self.router_owner)
         self._router()
         await db_session.flush()
-        mock_systemone_responses(respx_mock=respx, provider_type=ProviderType.COLIBRI, body=SystemOneResponseFactory(), status_code=200)
+        body = SystemOneResponseFactory()
+        del body["usage"]
+        mock_systemone_responses(respx_mock=respx, provider_type=ProviderType.COLIBRI, body=body, status_code=200)
         # a tokenizer that counts one token per word, so that the count follows the text it is given
         self.tokenizer.encode.side_effect = lambda text: [0] * len(text.split())
         headers = {"Authorization": f"Bearer {admin_key.token}"}
@@ -225,7 +244,7 @@ class TestCreateSystemOne:
         systemone = await client.get(url=f"/v1{EndpointRoute.USAGE}?{window}&endpoint=/v1{EndpointRoute.SYSTEMONE}", headers=headers)
         chat = await client.get(url=f"/v1{EndpointRoute.USAGE}?{window}&endpoint=/v1{EndpointRoute.CHAT_COMPLETIONS}", headers=headers)
 
-        assert [(bucket["requests"], bucket["prompt_tokens"], bucket["completion_tokens"]) for bucket in systemone.json()["data"]] == [(1, 10, 0)]
+        assert [(bucket["requests"], bucket["prompt_tokens"], bucket["completion_tokens"]) for bucket in systemone.json()["data"]] == [(1, 86, 0)]
         assert chat.json()["data"] == []
 
     @pytest.mark.parametrize(
