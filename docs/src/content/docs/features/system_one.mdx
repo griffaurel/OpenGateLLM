@@ -179,4 +179,5 @@ Each request is recorded in the [usage](/features/usage/inference_monitoring/) o
 - Only Colibrì servers have a provider type. OpenGateLLM relays the request without translating it, so a server must serve `POST /v1/systemone` itself.
 - The request is relayed to one provider. If it fails, it is not tried on another provider of the router.
 - Streaming does not apply: the answer comes in one piece.
+- OpenGateLLM bounds the number of questions and of options, not the length of the text. A decision model reads a limited number of tokens: Colibrì's Laya engine, for example, cuts a long `state` at its `max_len` (512 tokens by default, per its documentation) and refuses with a `422` what cannot fit, such as too many options. The answer is then based on the part the model read, and OpenGateLLM does not tell you which part that was.
 - The tokens are not counted by the model: see [Usage and cost](#usage-and-cost).
