@@ -1,0 +1,182 @@
+---
+title: Decision models (System One)
+sidebar:
+  label: "[lucide:list-checks] Decision models (System One)"
+---
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+A *decision model* answers closed questions. Instead of writing a sentence that you then have to parse, it **scores** each allowed option and returns a probability per option. You give it a **state** (a text, or JSON) and **typed questions**; it answers each question with one of the options you listed, and tells you how sure it is.
+
+OpenGateLLM relays `POST /v1/systemone` to a server that serves this API, with the same authentication, rate limits and usage accounting as the other endpoints.
+
+<Aside type="caution" title="Experimental">
+Only [Colibrì](https://github.com/JustVugg/colibri) is supported as a decision server today. Colibrì copies the request and the reply of the System One API of TypeSafe's Jev; OpenGateLLM has not been tried against Jev itself.
+</Aside>
+
+## Why use it instead of a chat model
+
+| | Chat completion | Decision model |
+|---|---|---|
+| Which option | A string to parse and hope for | One of the options you listed, by construction |
+| How likely each option is | Not available | A probability per option |
+| Does the model know | Not available | A `confidence` per answer, from 1 (all the probability on one option) to 0 (flat) |
+
+A low confidence is a useful answer: it tells you the decision needs a human.
+
+## Set up a decision model
+
+A decision model is a [router and its providers](/getting-started/models/), like any other model. The router has the type `decision` and its providers have the type `colibri`.
+
+<Steps>
+
+1. Start a Colibrì server with a model that can answer System One requests, and note the model name it serves (the `id` returned by its `GET /v1/models`).
+
+2. Create the router, as an administrator:
+
+   ```bash
+   curl -X POST https://your-opengatellm/v1/admin/routers \
+     -H "Authorization: Bearer $ADMIN_KEY" -H "Content-Type: application/json" \
+     -d '{"name": "ticket-triage", "type": "decision"}'
+   ```
+
+   Note the `id` of the router in the answer. Users call the router by its `name` (or by one of its `aliases`).
+
+3. Add the Colibrì server as a provider of this router:
+
+   ```bash
+   curl -X POST https://your-opengatellm/v1/admin/providers \
+     -H "Authorization: Bearer $ADMIN_KEY" -H "Content-Type: application/json" \
+     -d '{"router_id": 1, "type": "colibri", "url": "http://colibri:8000", "key": "your-colibri-key", "model_name": "qwen36"}'
+   ```
+
+   `url` is the address of the server, without `/v1`. `key` is the key of the server, if it has one. `model_name` is the model as the server names it.
+
+</Steps>
+
+When a provider is added, OpenGateLLM calls `GET /v1/models` on the server to check that it answers and serves `model_name`. The request fails with `424` if the server is not reachable, and with `404` if it does not serve this model. Only the `colibri` provider type is accepted by a `decision` router, and a `colibri` provider is only accepted by a `decision` router (`400` otherwise).
+
+The *Routers* and *Providers* pages of the Playground offer the `decision` and `colibri` types too. Decision models do not appear in the Playground chat, which only lists text generation models: call the endpoint with `curl` or an HTTP client.
+
+## Send a request
+
+```
+POST /v1/systemone
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `model` | yes | The name of the router. |
+| `state` | yes | What the questions are about: a text, or JSON given as an object or an array. |
+| `questions` | yes | The questions, as an object `id: question`, from 1 to 64. The answers use the same ids. |
+
+Every question has a `type`, optional `instructions` (a text, an object or an array) and its `criteria`:
+
+| `type` | `criteria` | Answer |
+|---|---|---|
+| `noul` | Optional: `{"true": ..., "false": ...}` to describe what yes and no mean. | `noul`: the probability of yes. |
+| `choice` | `{label: description}`, from 1 to 255 labels. A description may be `null`. | `choice` (the most likely label), `probabilities` by label, `confidence`. |
+| `score` | `[level 0, level 1, ...]`, from 1 to 255 levels, described in order. | `score` (the expected level), `legend`, `probabilities` by level, `confidence`. |
+
+Several questions on the same state are cheaper than separate requests: the server reads the state once.
+
+```bash
+curl -X POST https://your-opengatellm/v1/systemone \
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d '{
+    "model": "ticket-triage",
+    "state": "Hi, I have been trying to connect my Stripe account for 3 days and the integration keeps failing. I am losing sales. Please help ASAP.",
+    "questions": {
+      "urgency": {
+        "type": "noul",
+        "instructions": "Does this message express urgency?"
+      },
+      "department": {
+        "type": "choice",
+        "instructions": "Which team should handle this?",
+        "criteria": {
+          "billing": "payments, invoices, Stripe payouts",
+          "technical": "bugs, outages, integration errors",
+          "sales": "pricing, plans, upgrades"
+        }
+      },
+      "severity": {
+        "type": "score",
+        "instructions": "How severe is the customer impact?",
+        "criteria": ["no impact", "minor inconvenience", "blocked on one task", "losing money", "business down"]
+      }
+    }
+  }'
+```
+
+<Aside type="tip">
+List the options in `criteria` and nowhere else. Repeating them in the `state` or in the `instructions` makes the request longer, and naming them in a sentence can bias the scoring towards the one mentioned last.
+</Aside>
+
+## Read the answer
+
+```json
+{
+  "id": "b73affb90afd4691a10acb93a50529bf",
+  "model": "ticket-triage",
+  "answers": {
+    "urgency": {"type": "noul", "noul": 0.847606},
+    "department": {
+      "type": "choice",
+      "choice": "technical",
+      "probabilities": {"billing": 0.059806, "technical": 0.939983, "sales": 0.000211},
+      "confidence": 0.909974
+    },
+    "severity": {
+      "type": "score",
+      "score": 2.831772,
+      "legend": {"0": "no impact", "1": "minor inconvenience", "2": "blocked on one task", "3": "losing money", "4": "business down"},
+      "probabilities": {"0": 0.044403, "1": 0.02624, "2": 0.034899, "3": 0.842097, "4": 0.052361},
+      "confidence": 0.802621
+    }
+  },
+  "usage": {
+    "prompt_tokens": 96,
+    "completion_tokens": 0,
+    "total_tokens": 96,
+    "prompt_tokens_details": {"cached_tokens": 0},
+    "cost": 0.0,
+    "impacts": {"kWh": 0.0, "kgCO2eq": 0.0}
+  }
+}
+```
+
+- The probabilities of a question add up to 1.
+- `confidence` is computed by the server as `(n × highest probability − 1) / (n − 1)` over the `n` options. A `noul` answer has none. The probabilities and the confidence belong to the model: two models, or two providers of the same router, can give different numbers for the same request.
+- `score` is the expected level, so it is usually not a whole number. `legend` gives the description of each level, numbered from 0 in the order you sent them.
+- `id` and `model` are those of OpenGateLLM (the router name). Other fields of the server's answer, such as the name of the server software, may be passed through as they are.
+
+## Provider options
+
+Fields that OpenGateLLM does not know are sent to the provider as they are. For a Colibrì server, these are `normalize` (`"sum"` or `"mean"`: how the log-probabilities of a language model become one score per option), `pin_state`, `prefix` and `cache_slot`. See the [Colibrì documentation](https://github.com/JustVugg/colibri/blob/main/docs/systemone.md). A server that does not know a field answers according to its own rules.
+
+## Usage and cost
+
+Each request is recorded in the [usage](/features/usage/inference_monitoring/) of the key like any other model request, with the endpoint `/v1/systemone`.
+
+- `prompt_tokens` counts the text of the `state` and of the questions (instructions, labels and descriptions). It is computed by OpenGateLLM's tokenizer, so it is an estimate and may differ from what the server's model reads.
+- `completion_tokens` is always `0`: a decision model scores options, it generates nothing.
+- The cost is computed from the `cost_prompt_tokens` of the router. The rate limits of the router apply as for the other endpoints.
+
+## Errors
+
+| Status | Reason |
+|---|---|
+| `401` | Missing or invalid API key. |
+| `404` | The router does not exist, has no provider, or is not available to the key's user. |
+| `422` | The request is invalid (missing `state`, empty or unknown `questions`, a `choice` without `criteria`...), the router is not of type `decision`, or the provider's answer is not a valid System One answer. |
+| `429` | A rate limit of the router is exceeded. |
+| `503` | No provider is available, or the model is too busy. |
+| `4xx` | A refusal from the provider (for example an invalid field it checks itself) is passed through with its status. |
+| `500` | The provider answered with an unexpected error. |
+
+## Limits
+
+- Only Colibrì servers have a provider type. OpenGateLLM relays the request without translating it, so a server must serve `POST /v1/systemone` itself.
+- The request is relayed to one provider. If it fails, it is not tried on another provider of the router.
+- Streaming does not apply: the answer comes in one piece.
+- The tokens are not counted by the model: see [Usage and cost](#usage-and-cost).
