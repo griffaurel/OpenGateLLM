@@ -19,6 +19,7 @@ from api.domain.provider.errors import (
 from api.domain.role.entities import LimitType
 from api.domain.router.entities import RouterType
 from api.domain.router.errors import RouterHasNoProvidersError, RouterHasWrongTypeError, RouterNotFoundError, RouterRateLimitExceededError
+from api.domain.systemone.entities import CreateSystemOneBody
 from api.domain.user.errors import UserHasNoAccessToRouterError
 from api.infrastructure.fastapi.routes import EndpointRoute
 from api.tests.helpers import INVALID_API_KEY, create_key
@@ -51,6 +52,7 @@ class TestCreateSystemOne:
 
         mock_tokenizer = MagicMock()
         mock_tokenizer.encode.return_value = [0] * 10
+        self.tokenizer = mock_tokenizer
         with override_global_context(redis_pool=test_redis_pool, tokenizer=mock_tokenizer):
             yield
 
@@ -103,6 +105,38 @@ class TestCreateSystemOne:
         assert usage["prompt_tokens"] == 10
         assert usage["completion_tokens"] == 0
         assert usage["total_tokens"] == 10
+
+    @respx.mock
+    async def test_counts_the_state_and_the_questions_as_prompt_tokens(self, client: AsyncClient, db_session):
+        admin_key = await create_key(db_session, name="admin_systemone_count_key", user=self.router_owner)
+        self._router()
+        await db_session.flush()
+        mock_systemone_responses(respx_mock=respx, provider_type=ProviderType.COLIBRI, body=SystemOneResponseFactory(), status_code=200)
+        # a tokenizer that counts one token per word, so that the count follows the text it is given
+        self.tokenizer.encode.side_effect = lambda text: [0] * len(text.split())
+        headers = {"Authorization": f"Bearer {admin_key.token}"}
+        short_question = {"q": {"type": "noul", "instructions": "Is it urgent?"}}
+        requests = [
+            _valid_body(state="one two three", questions=short_question),
+            _valid_body(state="one two three " * 20, questions=short_question),
+            _valid_body(state="one two three", questions=SYSTEMONE_QUESTIONS),
+        ]
+
+        counts = []
+        for body in requests:
+            self.tokenizer.encode.reset_mock()
+            response = await client.post(url=URL, headers=headers, json=body)
+            assert response.status_code == 200, response.text
+            # exactly one text goes to the tokenizer: the state, then the instructions, labels and descriptions of the questions
+            (encoded_text,) = [call.args[0] for call in self.tokenizer.encode.call_args_list]
+            assert encoded_text == " ".join(CreateSystemOneBody.model_validate(body).get_prompts()).strip()
+            assert response.json()["usage"]["prompt_tokens"] == len(encoded_text.split())
+            assert response.json()["usage"]["completion_tokens"] == 0
+            counts.append(response.json()["usage"]["prompt_tokens"])
+
+        short_state, long_state, many_questions = counts
+        assert long_state > short_state  # a longer state costs more
+        assert many_questions > short_state  # more questions cost more
 
     @respx.mock
     async def test_relays_the_request_to_the_provider_with_its_model_name(self, client: AsyncClient, db_session):
